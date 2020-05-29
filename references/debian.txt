@@ -1,0 +1,41 @@
+#!/bin/bash
+
+# <UDF name="cockpit" Label="Install Cockpit?" oneOf="Yes,No" default="Yes" />
+
+# Set hostname
+HOSTNAME=$(hostname)
+FQDN=$(hostname -f)
+IPV4=$(hostname -I | cut -d ' ' -f 1)
+IPV6=$(hostname -I | cut -d ' ' -f 2)
+hostnamectl set-hostname $HOSTNAME
+echo "${IPV4} ${FQDN} ${HOSTNAME}" >> /etc/hosts
+echo "${IPV6} ${FQDN} ${HOSTNAME}" >> /etc/hosts
+
+# Update system
+export DEBIAN_FRONTEND=noninteractive
+apt-get update
+apt-get upgrade -y
+
+# Install/configure UFW
+apt-get install -y ufw
+ufw default allow outgoing
+ufw default deny incoming
+ufw allow ssh
+systemctl start ufw
+systemctl enable ufw
+
+if [[ $COCKPIT = "Yes" ]]; then
+    # Install Cockpit
+    echo 'deb http://deb.debian.org/debian stretch-backports main' > /etc/apt/sources.list.d/backports.list
+    apt-get update
+    apt-get install -y cockpit
+
+    # Start Cockpit
+    ufw allow 9090
+    systemctl start cockpit.socket
+    systemctl enable cockpit.socket
+fi
+
+# Cleanup
+rm /root/StackScript
+echo "Installation complete!"
