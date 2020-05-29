@@ -1,0 +1,60 @@
+#!/bin/bash
+
+# <UDF name="dbpass" Label="MySQL root password" example="s3cure_p4ssw0rd" />
+
+# Set hostname
+HOSTNAME=$(hostname)
+FQDN=$(hostname -f)
+IPV4=$(hostname -I | cut -d ' ' -f 1)
+IPV6=$(hostname -I | cut -d ' ' -f 2)
+hostnamectl set-hostname $HOSTNAME
+echo "${IPV4} ${FQDN} ${HOSTNAME}" >> /etc/hosts
+echo "${IPV6} ${FQDN} ${HOSTNAME}" >> /etc/hosts
+
+# Update system
+export DEBIAN_FRONTEND=noninteractive
+apt-get update
+apt-get upgrade -y
+
+# Install/configure UFW
+apt-get install -y ufw
+ufw default allow outgoing
+ufw default deny incoming
+ufw allow ssh
+systemctl start ufw
+systemctl enable ufw
+
+# Install/configure MySQL
+apt-get install -y mysql-server
+systemctl start mariadb
+systemctl enable mariadb
+mysql_secure_installation <<EOF
+
+y
+$DBPASS
+$DBPASS
+y
+y
+y
+y
+EOF
+
+# Install Apache
+apt-get install -y apache2
+
+# Install PHP
+apt-get install -y php php-mysql
+
+# Configure Apache
+ufw allow http
+ufw allow https
+rm /var/www/html/index.html
+cat > /var/www/html/index.php <<EOF
+<?php phpinfo(); ?>
+EOF
+systemctl start apache2
+systemctl enable apache2
+
+# Cleanup
+rm /root/StackScript
+echo "Installation complete!"
