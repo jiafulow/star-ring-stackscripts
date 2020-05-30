@@ -63,7 +63,13 @@ EOF
 ln -s /etc/nginx/sites-available/${WEBSITE}.conf /etc/nginx/sites-enabled/
 nginx_reload
 
+# Mediawiki
+mediawiki_install
+
 # Tuning
 # - see https://www.linode.com/docs/websites/hosting-a-website-ubuntu-18-04/
+
+# Add SSL
+# - see https://www.linode.com/docs/quick-answers/websites/secure-http-traffic-certbot/
 
 stackscript_cleanup
