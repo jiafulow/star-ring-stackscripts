@@ -1,0 +1,136 @@
+#!/bin/bash
+
+# Helper functions
+
+function system_update {
+  # Force IPv4 and noninteractive update
+  echo 'Acquire::ForceIPv4 "true";' > /etc/apt/apt.conf.d/99force-ipv4
+  export DEBIAN_FRONTEND=noninteractive
+  apt-get update
+}
+
+function system_set_hostname {
+  FQDN=$(hostname -f)
+  IPV4=$(hostname -I | cut -d ' ' -f 1)
+  IPV6=$(hostname -I | cut -d ' ' -f 2)
+  hostnamectl set-hostname ${HOSTNAME}
+  echo "${IPV4} ${FQDN} ${HOSTNAME}" >> /etc/hosts
+  echo "${IPV6} ${FQDN} ${HOSTNAME}" >> /etc/hosts
+}
+
+function system_set_timezone {
+  timedatectl set-timezone "America/Chicago"
+}
+
+function user_add_sudo {
+  # Add the user and set the password
+  adduser "${SSUSER}" --disabled-password --gecos ""
+  echo "${SSUSER}:${SSPASSWORD}" | chpasswd
+  # Add the newly created user to the 'sudo' group
+  adduser "${SSUSER}" sudo
+}
+
+function user_add_pubkey {
+  mkdir -p /home/"${SSUSER}"/.ssh
+  chmod -R 700 /home/"${SSUSER}"/.ssh/
+  echo "${SSPUBKEY}" >> /home/"${SSUSER}"/.ssh/authorized_keys
+  chown -R "${SSUSER}":"${SSUSER}" /home/"${SSUSER}"/.ssh
+  chmod 600 /home/"${SSUSER}"/.ssh/authorized_keys
+}
+
+function setup_unattended_upgrades {
+  # Apply automatic updates
+  apt-get install unattended-upgrades apt-listchanges -y
+  echo unattended-upgrades unattended-upgrades/enable_auto_updates boolean true | debconf-set-selections
+  dpkg-reconfigure -f noninteractive unattended-upgrades
+}
+
+function harden_ssh_access {
+  # Disallow root logins over SSH, disable SSH password authentication, and
+  # listen on only one internet protocol.
+  sed -i 's/PermitRootLogin yes/PermitRootLogin no/g' /etc/ssh/sshd_config
+  #sed -i 's/#PasswordAuthentication yes/PasswordAuthentication no/g' /etc/ssh/sshd_config
+  sed -i 's/#AddressFamily any/AddressFamily inet/g' /etc/ssh/sshd_config
+  systemctl restart sshd
+}
+
+function ufw_install {
+  # Install UFW and add basic rules
+  apt-get install ufw -y
+  ufw default allow outgoing
+  ufw default deny incoming
+  ufw allow ssh
+  ufw enable
+  systemctl enable ufw
+}
+
+function fail2ban_install {
+  # Install and configure Fail2ban
+  apt-get install fail2ban -y
+  cd /etc/fail2ban
+  cp fail2ban.conf fail2ban.local
+  cp jail.conf jail.local
+  systemctl start fail2ban
+  systemctl enable fail2ban
+}
+
+function run_mysql_secure_installation {
+  # Installs expect, runs mysql_secure_installation and runs mysql secure installation.
+  apt-get install expect -y
+  SECURE_MYSQL=$(expect -c "
+  set timeout 10
+  spawn mysql_secure_installation
+  expect \"Enter current password for root (enter for ):\"
+  send \"$DB_PASSWORD\r\"
+  expect \"Change the root password?\"
+  send \"n\r\"
+  expect \"Remove anonymous users?\"
+  send \"y\r\"
+  expect \"Disallow root login remotely?\"
+  send \"y\r\"
+  expect \"Remove test database and access to it?\"
+  send \"y\r\"
+  expect \"Reload privilege tables now?\"
+  send \"y\r\"
+  expect eof
+  ")
+  echo "$SECURE_MYSQL"
+}
+
+function nginx_install {
+  apt-get install nginx -y
+  systemctl start nginx
+  systemctl enable nginx
+  ufw allow http
+  ufw allow https
+}
+
+function mariadb_install {
+  apt-get install mariadb-server php-mysql -y
+  systemctl start mariadb
+  systemctl enable mariadb
+  run_mysql_secure_installation
+}
+
+function php_install {
+  apt-get install php-fpm -y
+  sed -i 's/;cgi.fix_pathinfo=1/cgi.fix_pathinfo=0/g' /etc/php/7.3/fpm/php.ini
+}
+
+function nginx_reload {
+  # Restart PHP and reload the NGINX configuration
+  systemctl restart php7.3-fpm
+  nginx -s reload
+}
+
+function stackscript_cleanup {
+  # Force IPv4 and noninteractive upgrade after script runs to prevent breaking nf_conntrack for UFW
+  echo 'Acquire::ForceIPv4 "true";' > /etc/apt/apt.conf.d/99force-ipv4
+  export DEBIAN_FRONTEND=noninteractive
+  apt-get upgrade -y
+
+  #rm /root/StackScript
+  #rm /root/ssinclude*
+  echo "Installation complete!"
+  touch "/root/.ss-complete"
+}
