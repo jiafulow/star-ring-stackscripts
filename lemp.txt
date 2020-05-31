@@ -65,6 +65,7 @@ nginx_reload
 
 # Mediawiki
 mediawiki_install
+postfix_install_loopback_only
 
 # Tuning
 # - see https://www.linode.com/docs/websites/hosting-a-website-ubuntu-18-04/
